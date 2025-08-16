@@ -1,0 +1,22 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  Environment:
+    Type: String
+    Default: dev 
+
+Resources:
+  ImagesBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "images-${AWS::StackName}-${Environment}"
+      AccessControl: Private
+      VersioningConfiguration:
+        Status: Enabled
+    
+  ThumbnailBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "thumbnails-${AWS::StackName}-${Environment}"
+
+
+
