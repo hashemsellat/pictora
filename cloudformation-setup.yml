@@ -4,6 +4,9 @@ Parameters:
     Type: String
     Default: dev 
 
+  SourceBucket:
+    Type: String
+
 Resources:
   ImagesBucket:
     Type: AWS::S3::Bucket
@@ -18,5 +21,46 @@ Resources:
     Properties:
       BucketName: !Sub "thumbnails-${AWS::StackName}-${Environment}"
 
-
-
+  ImageProcessingFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "ImageProcessingFunction-${AWS::StackName}-${Environment}"
+      Handler: image_processor.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn 
+      Code: 
+        S3Bucket: !Ref SourceBucket
+        S3Key: image_processor.zip
+      Runtime: python3.13
+      Timeout: 30
+      Environment:
+        Variables:
+          IMAGES_BUCKET: !Ref ImagesBucket
+  
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "LambdaExecutionRole-${AWS::StackName}-${Environment}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow 
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      
+      Policies:
+        - PolicyName: !Sub "LambdaS3AccessPolicy-${AWS::StackName}-${Environment}"
+          PolicyDocument: 
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow 
+                Action: 
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:ListBucket
+                Resource: 
+                  - !Sub "arn:aws:s3:::images-${AWS::StackName}-${Environment}" 
+                  - !Sub "arn:aws:s3:::images-${AWS::StackName}-${Environment}/*"
