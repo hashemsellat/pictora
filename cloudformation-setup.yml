@@ -64,3 +64,58 @@ Resources:
                 Resource: 
                   - !Sub "arn:aws:s3:::images-${AWS::StackName}-${Environment}" 
                   - !Sub "arn:aws:s3:::images-${AWS::StackName}-${Environment}/*"
+
+  ImageProcessingApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: !Sub "ImageProcessingApi-${AWS::StackName}-${Environment}"
+      ProtocolType: HTTP
+      CorsConfiguration: 
+        AllowMethods:
+          - '*'
+        AllowOrigins:
+          - '*'
+        AllowHeaders:
+          - Content-Type
+          - Authorization
+          - X-Requested-With
+
+  CloudWatchLogGroupApi:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/api-gateway/ImageProcessingApi-${AWS::StackName}-${Environment}"
+      RetentionInDays: 14
+    
+  ImageProcessingApiStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref ImageProcessingApi
+      StageName: !Ref Environment
+      AutoDeploy: true
+      AccessLogSettings:
+        DestinationArn: !GetAtt CloudWatchLogGroupApi.Arn
+        Format: '{"requestId":"$context.requestId","ip":"$context.identity.sourceIp","requestTime":"$context.requestTime","httpMethod":"$context.httpMethod","routeKey":"$context.routeKey","status":"$context.status","protocol":"$context.protocol","responseLength":"$context.responseLength"}'
+  
+  ImageProcessingApiIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties: 
+      ApiId: !Ref ImageProcessingApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt ImageProcessingFunction.Arn
+      PayloadFormatVersion: '2.0'
+      IntegrationMethod: POST
+
+  ImageProcessingApiRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref ImageProcessingApi
+      RouteKey: 'POST /process'
+      Target: !Sub 'integrations/${ImageProcessingApiIntegration}'
+      
+  LambdaApiInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt ImageProcessingFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ImageProcessingApi}/*" 
