@@ -6,6 +6,9 @@ Parameters:
 
   SourceBucket:
     Type: String
+  
+  CognitoUserName:
+    Type: String
 
 Resources:
   ImagesBucket:
@@ -111,6 +114,8 @@ Resources:
       ApiId: !Ref ImageProcessingApi
       RouteKey: 'POST /process'
       Target: !Sub 'integrations/${ImageProcessingApiIntegration}'
+      AuthorizationType: JWT
+      AuthorizerId: !Ref ImageProcessingApiAuthorizer
       
   LambdaApiInvokePermission:
     Type: AWS::Lambda::Permission
@@ -119,3 +124,51 @@ Resources:
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ImageProcessingApi}/*" 
+    
+  CognitoUserPool: 
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub "ImageProcessingUserPool-${AWS::StackName}-${Environment}"
+      AutoVerifiedAttributes:
+        - email
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireUppercase: false 
+      Schema: 
+        - Name: email
+          Required: true
+          Mutable: true
+  
+  CognitoUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub "ImageProcessingUserPoolClient-${AWS::StackName}-${Environment}"
+      UserPoolId: !Ref CognitoUserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ADMIN_NO_SRP_AUTH
+        - USER_PASSWORD_AUTH
+      SupportedIdentityProviders:
+        - COGNITO
+    
+  CognitoUser:
+    Type: AWS::Cognito::UserPoolUser
+    Properties:
+      UserPoolId: !Ref CognitoUserPool
+      Username: !Ref CognitoUserName
+      DesiredDeliveryMediums: [] 
+      MessageAction: SUPPRESS
+
+  ImageProcessingApiAuthorizer:
+    Type: AWS::ApiGatewayV2::Authorizer
+    Properties:
+      ApiId: !Ref ImageProcessingApi
+      AuthorizerType: JWT
+      IdentitySource: 
+        - "$request.header.Authorization"
+      Name: CognitoAuthorizer
+      JwtConfiguration:
+        Audience:
+          - !Ref CognitoUserPoolClient
+        Issuer: !Sub "https://cognito-idp.${AWS::Region}.amazonaws.com/${CognitoUserPool}"
