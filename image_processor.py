@@ -2,8 +2,11 @@ import os
 import json
 import base64
 import boto3
+from PIL import Image
+from io import BytesIO
 
 images_bucket = os.environ.get('IMAGES_BUCKET')
+thumbnail_bucket = os.environ.get('THUMBNAIL_BUCKET')
 
 def lambda_handler(event, context):
     try:
@@ -37,6 +40,22 @@ def lambda_handler(event, context):
             Bucket = images_bucket,
             Key = filename,
             Body = image_bytes,
+            ContentType = content_type
+        )
+
+        # Create and store thumbnail
+        image = Image.open(BytesIO(image_bytes))
+        thumbnail_size = int(os.environ.get('THUMBNAIL_SIZE', '128'))
+        image.thumbnail((thumbnail_size, thumbnail_size))
+        
+        thumbnail_io = BytesIO() 
+        image.save(thumbnail_io, format=image.format or 'JPEG')
+        thumbnail_io.seek(0)
+        
+        s3.put_object(
+            Bucket = thumbnail_bucket,
+            Key = filename,
+            Body = thumbnail_io, 
             ContentType = content_type
         )
         

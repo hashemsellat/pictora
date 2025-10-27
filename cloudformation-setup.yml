@@ -9,6 +9,10 @@ Parameters:
   
   CognitoUserName:
     Type: String
+  
+  ThumbnailSize:
+    Type: Number
+    Default: 150
 
 Resources:
   ImagesBucket:
@@ -32,12 +36,15 @@ Resources:
       Role: !GetAtt LambdaExecutionRole.Arn 
       Code: 
         S3Bucket: !Ref SourceBucket
-        S3Key: image_processor.zip
+        S3Key: image_processor_1.1.zip
       Runtime: python3.13
       Timeout: 30
       Environment:
         Variables:
           IMAGES_BUCKET: !Ref ImagesBucket
+          THUMBNAIL_BUCKET: !Ref ThumbnailBucket
+      Layers: 
+        - !Ref LayerUtilities
   
   LambdaExecutionRole:
     Type: AWS::IAM::Role
@@ -67,6 +74,8 @@ Resources:
                 Resource: 
                   - !Sub "arn:aws:s3:::images-${AWS::StackName}-${Environment}" 
                   - !Sub "arn:aws:s3:::images-${AWS::StackName}-${Environment}/*"
+                  - !Sub "arn:aws:s3:::thumbnails-${AWS::StackName}-${Environment}"
+                  - !Sub "arn:aws:s3:::thumbnails-${AWS::StackName}-${Environment}/*"
 
   ImageProcessingApi:
     Type: AWS::ApiGatewayV2::Api
@@ -172,3 +181,14 @@ Resources:
         Audience:
           - !Ref CognitoUserPoolClient
         Issuer: !Sub "https://cognito-idp.${AWS::Region}.amazonaws.com/${CognitoUserPool}"
+  
+  LayerUtilities: 
+    Type: AWS::Lambda::LayerVersion
+    Properties:
+      LayerName: !Sub "UtilitiesLayer-${Environment}"
+      Description: "Layer for utility functions"
+      Content:
+        S3Bucket: !Ref SourceBucket
+        S3Key: utilities_1.0.zip
+      CompatibleRuntimes:
+        - python3.13
