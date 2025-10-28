@@ -36,13 +36,15 @@ Resources:
       Role: !GetAtt LambdaExecutionRole.Arn 
       Code: 
         S3Bucket: !Ref SourceBucket
-        S3Key: image_processor_1.1.zip
+        S3Key: image_processor_1.2.zip
       Runtime: python3.13
       Timeout: 30
       Environment:
         Variables:
           IMAGES_BUCKET: !Ref ImagesBucket
           THUMBNAIL_BUCKET: !Ref ThumbnailBucket
+          THUMBNAIL_SIZE: !Ref ThumbnailSize
+          LABELS_TABLE: !Ref ImageLabelsTable
       Layers: 
         - !Ref LayerUtilities
   
@@ -76,6 +78,22 @@ Resources:
                   - !Sub "arn:aws:s3:::images-${AWS::StackName}-${Environment}/*"
                   - !Sub "arn:aws:s3:::thumbnails-${AWS::StackName}-${Environment}"
                   - !Sub "arn:aws:s3:::thumbnails-${AWS::StackName}-${Environment}/*"
+      
+        - PolicyName: LambdaDynamoDBAccessPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: '*'
+                Resource: !GetAtt ImageLabelsTable.Arn
+        
+        - PolicyName: LambdaRekognitionAccessPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: '*'
+                Resource: '*'
 
   ImageProcessingApi:
     Type: AWS::ApiGatewayV2::Api
@@ -192,3 +210,17 @@ Resources:
         S3Key: utilities_1.0.zip
       CompatibleRuntimes:
         - python3.13
+  
+  ImageLabelsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "ImageLabels-${AWS::StackName}-${Environment}"
+      AttributeDefinitions:
+        - AttributeName: image_id
+          AttributeType: S 
+      KeySchema:
+        - AttributeName: image_id 
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+      SSESpecification:
+        SSEEnabled: true

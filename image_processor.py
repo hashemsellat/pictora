@@ -8,6 +8,24 @@ from io import BytesIO
 images_bucket = os.environ.get('IMAGES_BUCKET')
 thumbnail_bucket = os.environ.get('THUMBNAIL_BUCKET')
 
+def detect_and_save_image_labels(filename, image_bytes):
+    rekognition = boto3.client('rekognition')
+    response = rekognition.detect_labels(
+        Image = {'Bytes': image_bytes},
+        MaxLabels = 10, 
+        MinConfidence = 75
+    )
+    table_name = os.environ.get('LABELS_TABLE')
+    dynamodb = boto3.resource('dynamodb')
+    table = dynamodb.Table(table_name)
+    labels = [label['Name'] for label in response['Labels']]
+    table.put_item(
+        Item = {
+            'image_id': filename,
+            'labels': labels
+        }
+    ) 
+
 def lambda_handler(event, context):
     try:
         body = json.loads(event.get('body','{}'))
@@ -58,6 +76,8 @@ def lambda_handler(event, context):
             Body = thumbnail_io, 
             ContentType = content_type
         )
+        
+        detect_and_save_image_labels(filename, image_bytes)
         
         return {
             'statusCode' : 200
