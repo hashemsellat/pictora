@@ -36,7 +36,7 @@ Resources:
       Role: !GetAtt LambdaExecutionRole.Arn 
       Code: 
         S3Bucket: !Ref SourceBucket
-        S3Key: image_processor_1.2.zip
+        S3Key: image_processor_1.3.zip
       Runtime: python3.13
       Timeout: 30
       Environment:
@@ -45,8 +45,25 @@ Resources:
           THUMBNAIL_BUCKET: !Ref ThumbnailBucket
           THUMBNAIL_SIZE: !Ref ThumbnailSize
           LABELS_TABLE: !Ref ImageLabelsTable
+          SNS_TOPIC_ARN: !Ref UploadSNSTopic
       Layers: 
         - !Ref LayerUtilities
+    
+  SubscriptionLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "SubscriptionLambdaFunction-${AWS::StackName}-${Environment}"
+      Handler: subscription_handler.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code: 
+        S3Bucket: !Ref SourceBucket
+        S3Key: subscription_handler_1.0.zip
+      Runtime: python3.13
+      Timeout: 30
+      Environment:
+        Variables:
+          SNS_TOPIC_ARN: !Ref UploadSNSTopic
+
   
   ImageQueryFunction:
     Type: AWS::Lambda::Function
@@ -113,6 +130,16 @@ Resources:
               - Effect: Allow
                 Action: 'rekognition:*'
                 Resource: '*'
+        
+        - PolicyName: LambdaSNSPublishPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: 
+                  - sns:Publish
+                  - sns:Subscribe
+                Resource: !Ref UploadSNSTopic
 
   ImageProcessingApi:
     Type: AWS::ApiGatewayV2::Api
@@ -179,6 +206,23 @@ Resources:
       RouteKey: 'GET /search'
       Target: !Sub 'integrations/${ImageQueryApiIntegration}'
       AuthorizationType: NONE
+
+  SubscriptionApiIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref ImageProcessingApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt SubscriptionLambdaFunction.Arn
+      PayloadFormatVersion: '2.0'
+      IntegrationMethod: POST
+
+  SubscriptionApiRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref ImageProcessingApi
+      RouteKey: 'POST /subscribe'
+      Target: !Sub 'integrations/${SubscriptionApiIntegration}'
+      AuthorizationType: NONE
       
   LambdaApiInvokePermission:
     Type: AWS::Lambda::Permission
@@ -195,7 +239,15 @@ Resources:
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ImageProcessingApi}/*" 
-    
+
+  LambdaApiInvokePermissionSubscription: 
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt SubscriptionLambdaFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ImageProcessingApi}/*" 
+
   CognitoUserPool: 
     Type: AWS::Cognito::UserPool
     Properties:
@@ -268,3 +320,16 @@ Resources:
       BillingMode: PAY_PER_REQUEST
       SSESpecification:
         SSEEnabled: true
+
+  UploadSNSTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub "UploadTopic-${AWS::StackName}-${Environment}"
+  
+  UploadSNSEmailSubscription:
+    Type: AWS::SNS::Subscription
+    DeletionPolicy: Delete
+    Properties:
+      TopicArn: !Ref UploadSNSTopic
+      Protocol: email
+      Endpoint: hashemsellat@gmail.com

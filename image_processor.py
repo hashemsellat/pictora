@@ -26,6 +26,15 @@ def detect_and_save_image_labels(filename, image_bytes):
         }
     ) 
 
+def send_email_notification(filename):
+    sns_topic_arn = os.environ.get('SNS_TOPIC_ARN')
+    sns = boto3.client('sns')
+    sns.publish(
+        TopicArn=sns_topic_arn,
+        Subject='New Image Uploaded',
+        Message=f'Image {filename} has been uploaded to the gallery.'
+    )
+
 def lambda_handler(event, context):
     try:
         body = json.loads(event.get('body','{}'))
@@ -78,6 +87,7 @@ def lambda_handler(event, context):
         )
         
         detect_and_save_image_labels(filename, image_bytes)
+        send_email_notification(filename)
         
         return {
             'statusCode' : 200
